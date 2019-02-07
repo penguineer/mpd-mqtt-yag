@@ -110,8 +110,8 @@ class MpdClientPool():
 
 
 class MpdObserver():
-    def __init__(self, mpd):
-        self.mpd = mpd
+    def __init__(self, mpd_pool):
+        self.mpd_pool = mpd_pool
         self.song_cb=None
         self.play_cb=None
         self.elapsed_cb=None
@@ -183,7 +183,9 @@ class MpdObserver():
         self._check_updates()
 
         while True:
-            subsystems = self.mpd.idle()
+            mpd = self.mpd_pool.acquire()
+            subsystems = mpd.idle()
+            self.mpd_pool.drop(mpd)
             self._check_updates(subsystems)
 
 
@@ -198,13 +200,17 @@ class MpdObserver():
 
 
     def _update_status(self):
-        st_py = self.mpd.status()
+        mpd = self.mpd_pool.acquire()
+        st_py = mpd.status()
+        self.mpd_pool.drop(mpd)
         for name, val in st_py.items():
             self.status[name] = val
 
 
     def _update_song(self):
-        song_py = self.mpd.currentsong()
+        mpd = self.mpd_pool.acquire()
+        song_py = mpd.currentsong()
+        self.mpd_pool.drop(mpd)
         for name, val in song_py.items():
             self.song[name] = val
 
@@ -230,34 +236,48 @@ class MpdObserver():
 
 
 class MpdCommander():
-    def __init__(self, mpd):
-        self.mpd = mpd
+    def __init__(self, mpd_pool):
+        self.mpd_pool = mpd_pool
 
 
     def cmd_play(self):
-        self.mpd.single(0)
-        self.mpd.play()
+        mpd = self.mpd_pool.acquire()
+        mpd.single(0)
+        mpd.play()
+        self.mpd_pool.drop(mpd)
 
 
     def cmd_pause(self):
-        self.mpd.pause()
+        mpd = self.mpd_pool.acquire()
+        mpd.pause()
+        self.mpd_pool.drop(mpd)
 
 
     def cmd_stop(self):
-        self.mpd.stop()
+        mpd = self.mpd_pool.acquire()
+        mpd.stop()
+        self.mpd_pool.drop(mpd)
 
 
     def cmd_stop_after(self):
-        self.mpd.single(1)
+        mpd = self.mpd_pool.acquire()
+        mpd.single(1)
+        self.mpd_pool.drop(mpd)
 
 
     def cmd_next(self):
-        self.mpd.next()
+        mpd = self.mpd_pool.acquire()
+        mpd.next()
+        self.mpd_pool.drop(mpd)
 
 
     def cmd_volume(self, volume):
         try:
-            self.mpd.setvol(int(volume))
+            vol = int(volume)
+
+            mpd = self.mpd_pool.acquire()
+            mpd.setvol(vol)
+            self.mpd_pool.drop(mpd)
         except ValueError as e:
             print(e)
 
@@ -359,23 +379,17 @@ if __name__ == "__main__":
     mqttclient.connect(args.mqtthost, args.mqttport, 60)
     mqttclient.loop_start()
 
-    mpd_obs = MPDClient()
-    mpd_obs.timeout = 10
-    mpd_obs.idletimeout = None
+    mpd_pool = MpdClientPool(args.mpdhost, args.mpdport)
 
-    mpd_obs.connect(args.mpdhost, args.mpdport)
+    mpd_ver = mpd_pool.acquire()
     print("Connected to MPD {version} on {host}:{port}.".format(
         host=args.mpdhost,
         port=args.mpdport,
-        version=mpd_obs.mpd_version))
-    observer = MpdObserver(mpd_obs);
+        version=mpd_ver.mpd_version))
+    mpd_pool.drop(mpd_ver)
 
-    mpd_cmd = MPDClient()
-    mpd_cmd.timeout = 10
-    mpd_cmd.idletimeout = None
-
-    mpd_cmd.connect(args.mpdhost, args.mpdport)
-    commander = MpdCommander(mpd_cmd)
+    observer = MpdObserver(mpd_pool);
+    commander = MpdCommander(mpd_pool)
 
     mqtt_handler = MqttHandler(mqttclient, args.topic, commander, observer)
 
