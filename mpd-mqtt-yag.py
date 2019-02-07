@@ -54,7 +54,7 @@ class ObservedDict(dict):
         return ch
 
 
-class MpdHandler():
+class MpdObserver():
     def __init__(self, mpd):
         self.mpd = mpd
         self.song_cb=None
@@ -174,19 +174,55 @@ class MpdHandler():
             self.emit_single()
 
 
+class MpdCommander():
+    def __init__(self, mpd):
+        self.mpd = mpd
+
+
+    def cmd_play(self):
+        self.mpd.single(0)
+        self.mpd.play()
+
+
+    def cmd_pause(self):
+        self.mpd.pause()
+
+
+    def cmd_stop(self):
+        self.mpd.stop()
+
+
+    def cmd_stop_after(self):
+        self.mpd.single(1)
+
+
+    def cmd_next(self):
+        self.mpd.next()
+
+
+    def cmd_volume(self, volume):
+        try:
+            self.mpd.setvol(int(volume))
+        except ValueError as e:
+            print(e)
+
+
 class MqttHandler():
-    def __init__(self, mqtt, topic_base, mpd):
+    def __init__(self, mqtt, topic_base, mpd_cmd, mpd_obs):
         self.mqtt = mqtt
         self.topic_base = topic_base
 
-        self.mpd = mpd
-        self.mpd.set_callback(song_cb = self.song_cb,
-                              play_cb = self.play_cb,
-                              elapsed_cb = self.elapsed_cb,
-                              volume_cb = self.volume_cb,
-                              repeat_random_cb = self.repeat_random_cb,
-                              single_cb = self.single_cb)
+        self.mpd_cmd = mpd_cmd
+        self.mpd_obs = mpd_obs
+        self.mpd_obs.set_callback(song_cb = self.song_cb,
+                                  play_cb = self.play_cb,
+                                  elapsed_cb = self.elapsed_cb,
+                                  volume_cb = self.volume_cb,
+                                  repeat_random_cb = self.repeat_random_cb,
+                                  single_cb = self.single_cb)
 
+        mqtt_add_topic_callback(mqtt, self._render_topic("CMD"), self._dispatch_command_mqtt_cb)
+        mqtt_add_topic_callback(mqtt, self._render_topic("CMD/volume"), self._volume_mqtt_cb)
 
     def song_cb(self, song):
         for key, value in song.items():
@@ -218,6 +254,39 @@ class MqttHandler():
         delim = "" if self.topic_base.endswith("/") or rel.startswith("/") else "/"
         return "{base}{delim}{rel}".format(base=self.topic_base, delim=delim, rel=rel)
 
+
+    def _dispatch_command_mqtt_cb(self, client, userdata, message):
+        cmd = message.payload.decode("utf-8")
+
+        commands = {
+            'query': self._cmd_query,
+            'play': self.mpd_cmd.cmd_play,
+            'pause': self.mpd_cmd.cmd_pause,
+            'stop': self.mpd_cmd.cmd_stop,
+            'stop after': self.mpd_cmd.cmd_stop_after,
+            'next': self.mpd_cmd.cmd_next
+            }
+
+        if cmd in commands:
+            commands[cmd]()
+
+
+    def _volume_mqtt_cb(self, client, userdata, message):
+        volume = message.payload.decode("utf-8")
+
+        self.mpd_cmd.cmd_volume(volume)
+
+
+    def _cmd_query(self):
+        if self.mpd_obs is not None:
+            self.mpd_obs.emit_song()
+            self.mpd_obs.emit_state()
+            self.mpd_obs.emit_elapsed()
+            self.mpd_obs.emit_volume()
+            self.mpd_obs.emit_random_repeat()
+            self.mpd_obs.emit_single()
+
+
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, sigint_handler)
 
@@ -235,19 +304,26 @@ if __name__ == "__main__":
     mqttclient.connect(args.mqtthost, args.mqttport, 60)
     mqttclient.loop_start()
 
-    client = MPDClient()
-    client.timeout = 10
-    client.idletimeout = None
+    mpd_obs = MPDClient()
+    mpd_obs.timeout = 10
+    mpd_obs.idletimeout = None
 
-    client.connect(args.mpdhost, args.mpdport)
+    mpd_obs.connect(args.mpdhost, args.mpdport)
     print("Connected to MPD {version} on {host}:{port}.".format(
         host=args.mpdhost,
         port=args.mpdport,
-        version=client.mpd_version))
+        version=mpd_obs.mpd_version))
+    observer = MpdObserver(mpd_obs);
 
-    handler = MpdHandler(client);
-    mqtt_handler = MqttHandler(mqttclient, args.topic, handler)
+    mpd_cmd = MPDClient()
+    mpd_cmd.timeout = 10
+    mpd_cmd.idletimeout = None
 
-    handler.watch()
+    mpd_cmd.connect(args.mpdhost, args.mpdport)
+    commander = MpdCommander(mpd_cmd)
+
+    mqtt_handler = MqttHandler(mqttclient, args.topic, commander, observer)
+
+    observer.watch()
 
     mqttclient.loop_stop()
