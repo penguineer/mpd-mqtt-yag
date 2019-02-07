@@ -2,6 +2,7 @@
 
 import signal
 import sys
+import time
 
 import argparse
 
@@ -52,6 +53,60 @@ class ObservedDict(dict):
         ch = self.changes
         self.changes = {}
         return ch
+
+
+class MpdClientPool():
+    def __init__(self, host, port, password=None):
+        self.host = host
+        self.port = port
+        self.password = password
+
+        self.clients = []
+
+
+    def _create_client(self):
+        client = MPDClient()
+        client.timeout = 10
+        client.idletimeout = None
+        if self.password:
+            client.password(password)
+
+        client.connect(self.host, self.port)
+
+        return client
+
+
+    def acquire(self):
+        client = None
+
+        tries = 10
+        timeout = 5
+
+        while not client and tries:
+            try:
+                client = None
+
+                if self.clients:
+                    client = self.clients[0]
+                    self.clients = self.clients[1:]
+                else:
+                    client = self._create_client()
+
+                client.ping()
+
+            except Exception as e:
+                print(e)
+                if tries == 0:
+                    raise
+                tries = tries - 1
+
+                time.sleep(timeout)
+
+        return client
+
+
+    def drop(self, client):
+        self.clients.append(client)
 
 
 class MpdObserver():
