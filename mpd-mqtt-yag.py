@@ -8,6 +8,25 @@ import argparse
 # https://python-mpd2.readthedocs.io/en/latest/
 from mpd import MPDClient
 
+import paho.mqtt.client as mqtt
+
+
+MQTT_TOPICS = {}
+
+def mqtt_add_topic_callback(mqtt, topic, cb):
+    MQTT_TOPICS[topic] = cb
+
+    mqtt.subscribe(topic)
+    mqtt.message_callback_add(topic, cb)
+
+
+def on_mqtt_connect(client, userdata, flags, rc):
+    print("MQTT connected with code %s" % rc)
+    for topic, cb in MQTT_TOPICS.items():
+        client.subscribe(topic)
+        client.message_callback_add(topic, cb)
+
+
 def sigint_handler(signal, frame):
     print("SIGINT received. Exit.")
     sys.exit(0)
@@ -107,7 +126,15 @@ if __name__ == "__main__":
         description="Yet another MPD MQTT gateway")
     parser.add_argument("--mpdhost", help="MPD host", default="localhost")
     parser.add_argument("--mpdport", help="MPD port", default=6600)
+    parser.add_argument("--mqtthost", help="MQTT host", default="localhost")
+    parser.add_argument("--mqttport", help="MQTT port", default=1883)
+    parser.add_argument("--topic", help="MQTT topic prefix", default="MPD")
     args = parser.parse_args()
+
+    mqttclient = mqtt.Client()
+    mqttclient.on_connect = on_mqtt_connect
+    mqttclient.connect(args.mqtthost, args.mqttport, 60)
+    mqttclient.loop_start()
 
     client = MPDClient()
     client.timeout = 10
@@ -121,3 +148,5 @@ if __name__ == "__main__":
 
     handler = MpdHandler(client)
     handler.watch()
+
+    mqttclient.loop_stop()
