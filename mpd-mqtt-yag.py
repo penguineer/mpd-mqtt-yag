@@ -13,6 +13,28 @@ def sigint_handler(signal, frame):
     sys.exit(0)
 
 
+class ObservedDict(dict):
+    def __init__(self, **kwargs):
+        super(ObservedDict, self).__init__(**kwargs)
+
+        self.changes = {}
+
+
+    def __setitem__(self, item, value):
+        oldval = self.__getitem__(item) if item in self else None
+
+        if not oldval or oldval != value:
+            self.changes[item] = value
+
+        super(ObservedDict, self).__setitem__(item, value)
+
+
+    def get_changes(self):
+        ch = self.changes
+        self.changes = {}
+        return ch
+
+
 class MpdHandler():
     def __init__(self, client):
         super().__init__()
