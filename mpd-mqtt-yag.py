@@ -55,8 +55,8 @@ class ObservedDict(dict):
 
 
 class MpdHandler():
-    def __init__(self, client):
-        self.client = client
+    def __init__(self, mpd):
+        self.mpd = mpd
         self.status = ObservedDict()
         self.song = ObservedDict()
 
@@ -65,7 +65,7 @@ class MpdHandler():
         self._check_updates()
 
         while True:
-            subsystems = self.client.idle()
+            subsystems = self.mpd.idle()
             self._check_updates(subsystems)
 
 
@@ -80,13 +80,13 @@ class MpdHandler():
 
 
     def _update_status(self):
-        st_py = self.client.status()
+        st_py = self.mpd.status()
         for name, val in st_py.items():
             self.status[name] = val
 
 
     def _update_song(self):
-        song_py = self.client.currentsong()
+        song_py = self.mpd.currentsong()
         for name, val in song_py.items():
             self.song[name] = val
 
