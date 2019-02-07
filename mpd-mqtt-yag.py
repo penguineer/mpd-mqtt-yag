@@ -7,6 +7,7 @@ import time
 import argparse
 
 # https://python-mpd2.readthedocs.io/en/latest/
+import mpd
 from mpd import MPDClient
 
 import paho.mqtt.client as mqtt
@@ -84,8 +85,6 @@ class MpdClientPool():
 
         while not client and tries:
             try:
-                client = None
-
                 if self.clients:
                     client = self.clients[0]
                     self.clients = self.clients[1:]
@@ -94,8 +93,9 @@ class MpdClientPool():
 
                 client.ping()
 
-            except Exception as e:
-                print(e)
+            except mpd.base.ConnectionError as e:
+                client = None
+
                 if tries == 0:
                     raise
                 tries = tries - 1
