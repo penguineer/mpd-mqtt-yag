@@ -37,16 +37,67 @@ class ObservedDict(dict):
 
 class MpdHandler():
     def __init__(self, client):
-        super().__init__()
-
         self.client = client
+        self.status = ObservedDict()
+        self.song = ObservedDict()
 
 
     def watch(self):
+        self._check_updates()
+
         while True:
             subsystems = self.client.idle()
-            for subsystem in subsystems:
-                print(subsystem)
+            self._check_updates(subsystems)
+
+
+    def _check_updates(self, subsystems=None):
+        self._update_status()
+        status_changes = self.status.get_changes()
+        self._update_song()
+        song_changes = self.song.get_changes()
+
+        if status_changes or song_changes:
+            self._dispatch_change_events(subsystems, status_changes, song_changes)
+
+
+    def _update_status(self):
+        st_py = self.client.status()
+        for name, val in st_py.items():
+            self.status[name] = val
+
+
+    def _update_song(self):
+        song_py = self.client.currentsong()
+        for name, val in song_py.items():
+            self.song[name] = val
+
+
+    def _dispatch_change_events(self, subsystems, status_changes, song_changes):
+        if any (e in ['artist', 'title', 'album'] for e in song_changes):
+            keys = ['album', 'artist', 'date', 'file', 'time', 'title', 'track']
+            song = {k: v for k, v in filter(lambda i: i[0] in keys, self.song.items())}
+            print("song changed to %s" % str(song))
+
+        if 'state' in status_changes:
+            state = self.status['state']
+            print("player state changed to %s" % state)
+
+        if 'elapsed' in status_changes:
+            elapsed = self.status['elapsed']
+            print("elapsed changed to %s" % elapsed)
+
+        if 'volume' in status_changes:
+            volume = self.status['volume']
+            print("volume changed to %s" % volume)
+
+        if any (e in ['repeat', 'random'] for e in status_changes):
+            repeat = self.status['repeat']
+            random = self.status['random']
+            print("play mode changed to repeat=%s, random=%s" % (repeat, random))
+
+        if 'single' in status_changes:
+            single = self.status['single']
+            print("single play mode changed to %s" % single)
 
 
 if __name__ == "__main__":
