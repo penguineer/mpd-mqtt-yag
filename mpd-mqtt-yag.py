@@ -55,8 +55,21 @@ class ObservedDict(dict):
 
 
 class MpdHandler():
-    def __init__(self, mpd):
+    def __init__(self, mpd,
+                 song_cb=None,
+                 play_cb=None,
+                 elapsed_cb=None,
+                 volume_cb=None,
+                 repeat_random_cb=None,
+                 single_cb=None):
         self.mpd = mpd
+        self.song_cb=song_cb
+        self.play_cb=play_cb
+        self.elapsed_cb=elapsed_cb
+        self.volume_cb=volume_cb
+        self.repeat_random_cb=repeat_random_cb
+        self.single_cb=single_cb
+
         self.status = ObservedDict()
         self.song = ObservedDict()
 
@@ -95,28 +108,54 @@ class MpdHandler():
         if any (e in ['artist', 'title', 'album'] for e in song_changes):
             keys = ['album', 'artist', 'date', 'file', 'time', 'title', 'track']
             song = {k: v for k, v in filter(lambda i: i[0] in keys, self.song.items())}
-            print("song changed to %s" % str(song))
+            if self.song_cb is not None:
+                self.song_cb(song)
 
         if 'state' in status_changes:
             state = self.status['state']
-            print("player state changed to %s" % state)
+            if self.play_cb is not None:
+                self.play_cb
 
         if 'elapsed' in status_changes:
             elapsed = self.status['elapsed']
-            print("elapsed changed to %s" % elapsed)
+            if self.elapsed_cb is not None:
+                self.elapsed_cb(elapsed)
 
         if 'volume' in status_changes:
             volume = self.status['volume']
-            print("volume changed to %s" % volume)
+            if self.volume_cb is not None:
+                self.volume_cb(volume)
 
         if any (e in ['repeat', 'random'] for e in status_changes):
             repeat = self.status['repeat']
             random = self.status['random']
-            print("play mode changed to repeat=%s, random=%s" % (repeat, random))
+            if self.repeat_random_cb is not None:
+                self.repeat_random_cb(repeat, random)
 
         if 'single' in status_changes:
             single = self.status['single']
-            print("single play mode changed to %s" % single)
+            if self.single_cb is not None:
+                self.single_cb(single)
+
+
+def song_cb(song):
+    print("song changed to %s" % str(song))
+
+def play_cb(state):
+    print("player state changed to %s" % state)
+
+def elapsed_cb(elapsed):
+    print("elapsed changed to %s" % elapsed)
+
+def volume_cb(volume):
+    print("volume changed to %s" % volume)
+
+def repeat_random_cb(repeat, random):
+    print("play mode changed to repeat=%s, random=%s" % (repeat, random))
+
+def single_cb(single):
+    print("single play mode changed to %s" % single)
+
 
 
 if __name__ == "__main__":
@@ -146,7 +185,13 @@ if __name__ == "__main__":
         port=args.mpdport,
         version=client.mpd_version))
 
-    handler = MpdHandler(client)
+    handler = MpdHandler(client,
+                         song_cb = song_cb,
+                         play_cb = play_cb,
+                         elapsed_cb = elapsed_cb,
+                         volume_cb = volume_cb,
+                         repeat_random_cb = repeat_random_cb,
+                         single_cb = single_cb)
     handler.watch()
 
     mqttclient.loop_stop()
