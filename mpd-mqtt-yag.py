@@ -222,13 +222,14 @@ class MpdHandler():
 
 
     def watch(self):
-        self._check_updates()
+        subsystems = []
 
         while True:
+            self._check_updates(subsystems)
+
             mpd = self.mpd_pool.acquire()
             subsystems = mpd.idle()
             self.mpd_pool.drop(mpd)
-            self._check_updates(subsystems)
 
 
     def _check_updates(self, subsystems=None):
