@@ -109,7 +109,7 @@ class MpdClientPool():
         self.clients.append(client)
 
 
-class MpdObserver():
+class MpdHandler():
     def __init__(self, mpd_pool):
         self.mpd_pool = mpd_pool
         self.song_cb=None
@@ -136,6 +136,48 @@ class MpdObserver():
         self.volume_cb=volume_cb
         self.repeat_random_cb=repeat_random_cb
         self.single_cb=single_cb
+
+
+    def cmd_play(self):
+        mpd = self.mpd_pool.acquire()
+        mpd.single(0)
+        mpd.play()
+        self.mpd_pool.drop(mpd)
+
+
+    def cmd_pause(self):
+        mpd = self.mpd_pool.acquire()
+        mpd.pause()
+        self.mpd_pool.drop(mpd)
+
+
+    def cmd_stop(self):
+        mpd = self.mpd_pool.acquire()
+        mpd.stop()
+        self.mpd_pool.drop(mpd)
+
+
+    def cmd_stop_after(self):
+        mpd = self.mpd_pool.acquire()
+        mpd.single(1)
+        self.mpd_pool.drop(mpd)
+
+
+    def cmd_next(self):
+        mpd = self.mpd_pool.acquire()
+        mpd.next()
+        self.mpd_pool.drop(mpd)
+
+
+    def cmd_volume(self, volume):
+        try:
+            vol = int(volume)
+
+            mpd = self.mpd_pool.acquire()
+            mpd.setvol(vol)
+            self.mpd_pool.drop(mpd)
+        except ValueError as e:
+            print(e)
 
 
     def emit_song(self):
@@ -235,66 +277,18 @@ class MpdObserver():
             self.emit_single()
 
 
-class MpdCommander():
-    def __init__(self, mpd_pool):
-        self.mpd_pool = mpd_pool
-
-
-    def cmd_play(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.single(0)
-        mpd.play()
-        self.mpd_pool.drop(mpd)
-
-
-    def cmd_pause(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.pause()
-        self.mpd_pool.drop(mpd)
-
-
-    def cmd_stop(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.stop()
-        self.mpd_pool.drop(mpd)
-
-
-    def cmd_stop_after(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.single(1)
-        self.mpd_pool.drop(mpd)
-
-
-    def cmd_next(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.next()
-        self.mpd_pool.drop(mpd)
-
-
-    def cmd_volume(self, volume):
-        try:
-            vol = int(volume)
-
-            mpd = self.mpd_pool.acquire()
-            mpd.setvol(vol)
-            self.mpd_pool.drop(mpd)
-        except ValueError as e:
-            print(e)
-
-
 class MqttHandler():
-    def __init__(self, mqtt, topic_base, mpd_cmd, mpd_obs):
+    def __init__(self, mqtt, topic_base, mpd):
         self.mqtt = mqtt
         self.topic_base = topic_base
 
-        self.mpd_cmd = mpd_cmd
-        self.mpd_obs = mpd_obs
-        self.mpd_obs.set_callback(song_cb = self.song_cb,
-                                  play_cb = self.play_cb,
-                                  elapsed_cb = self.elapsed_cb,
-                                  volume_cb = self.volume_cb,
-                                  repeat_random_cb = self.repeat_random_cb,
-                                  single_cb = self.single_cb)
+        self.mpd = mpd
+        self.mpd.set_callback(song_cb = self.song_cb,
+                              play_cb = self.play_cb,
+                              elapsed_cb = self.elapsed_cb,
+                              volume_cb = self.volume_cb,
+                              repeat_random_cb = self.repeat_random_cb,
+                              single_cb = self.single_cb)
 
         mqtt_add_topic_callback(mqtt, self._render_topic("CMD"), self._dispatch_command_mqtt_cb)
         mqtt_add_topic_callback(mqtt, self._render_topic("CMD/volume"), self._volume_mqtt_cb)
@@ -335,11 +329,11 @@ class MqttHandler():
 
         commands = {
             'query': self._cmd_query,
-            'play': self.mpd_cmd.cmd_play,
-            'pause': self.mpd_cmd.cmd_pause,
-            'stop': self.mpd_cmd.cmd_stop,
-            'stop after': self.mpd_cmd.cmd_stop_after,
-            'next': self.mpd_cmd.cmd_next
+            'play': self.mpd.cmd_play,
+            'pause': self.mpd.cmd_pause,
+            'stop': self.mpd.cmd_stop,
+            'stop after': self.mpd.cmd_stop_after,
+            'next': self.mpd.cmd_next
             }
 
         if cmd in commands:
@@ -349,17 +343,17 @@ class MqttHandler():
     def _volume_mqtt_cb(self, client, userdata, message):
         volume = message.payload.decode("utf-8")
 
-        self.mpd_cmd.cmd_volume(volume)
+        self.mpd.cmd_volume(volume)
 
 
     def _cmd_query(self):
-        if self.mpd_obs is not None:
-            self.mpd_obs.emit_song()
-            self.mpd_obs.emit_state()
-            self.mpd_obs.emit_elapsed()
-            self.mpd_obs.emit_volume()
-            self.mpd_obs.emit_random_repeat()
-            self.mpd_obs.emit_single()
+        if self.mpd is not None:
+            self.mpd.emit_song()
+            self.mpd.emit_state()
+            self.mpd.emit_elapsed()
+            self.mpd.emit_volume()
+            self.mpd.emit_random_repeat()
+            self.mpd.emit_single()
 
 
 if __name__ == "__main__":
@@ -388,11 +382,10 @@ if __name__ == "__main__":
         version=mpd_ver.mpd_version))
     mpd_pool.drop(mpd_ver)
 
-    observer = MpdObserver(mpd_pool);
-    commander = MpdCommander(mpd_pool)
+    handler = MpdHandler(mpd_pool);
 
-    mqtt_handler = MqttHandler(mqttclient, args.topic, commander, observer)
+    mqtt_handler = MqttHandler(mqttclient, args.topic, handler)
 
-    observer.watch()
+    handler.watch()
 
     mqttclient.loop_stop()
