@@ -55,14 +55,26 @@ class ObservedDict(dict):
 
 
 class MpdHandler():
-    def __init__(self, mpd,
+    def __init__(self, mpd):
+        self.mpd = mpd
+        self.song_cb=None
+        self.play_cb=None
+        self.elapsed_cb=None
+        self.volume_cb=None
+        self.repeat_random_cb=None
+        self.single_cb=None
+
+        self.status = ObservedDict()
+        self.song = ObservedDict()
+
+
+    def set_callback(self,
                  song_cb=None,
                  play_cb=None,
                  elapsed_cb=None,
                  volume_cb=None,
                  repeat_random_cb=None,
                  single_cb=None):
-        self.mpd = mpd
         self.song_cb=song_cb
         self.play_cb=play_cb
         self.elapsed_cb=elapsed_cb
@@ -70,8 +82,46 @@ class MpdHandler():
         self.repeat_random_cb=repeat_random_cb
         self.single_cb=single_cb
 
-        self.status = ObservedDict()
-        self.song = ObservedDict()
+
+    def emit_song(self):
+        if self.song_cb is None:
+            return
+
+        keys = ['album', 'artist', 'file', 'time', 'title', 'track']
+        song = {k: v for k, v in filter(lambda i: i[0] in keys, self.song.items())}
+
+        self.song_cb(song)
+
+
+    def emit_state(self):
+        state = self.status['state']
+        if self.play_cb is not None:
+            self.play_cb(state)
+
+
+    def emit_elapsed(self):
+        elapsed = self.status['elapsed']
+        if self.elapsed_cb is not None:
+            self.elapsed_cb(elapsed)
+
+
+    def emit_volume(self):
+        volume = self.status['volume']
+        if self.volume_cb is not None:
+            self.volume_cb(volume)
+
+
+    def emit_random_repeat(self):
+        repeat = self.status['repeat']
+        random = self.status['random']
+        if self.repeat_random_cb is not None:
+            self.repeat_random_cb(repeat, random)
+
+
+    def emit_single(self):
+        single = self.status['single']
+        if self.single_cb is not None:
+            self.single_cb(single)
 
 
     def watch(self):
@@ -106,57 +156,67 @@ class MpdHandler():
 
     def _dispatch_change_events(self, subsystems, status_changes, song_changes):
         if any (e in ['artist', 'title', 'album'] for e in song_changes):
-            keys = ['album', 'artist', 'date', 'file', 'time', 'title', 'track']
-            song = {k: v for k, v in filter(lambda i: i[0] in keys, self.song.items())}
-            if self.song_cb is not None:
-                self.song_cb(song)
+            self.emit_song()
 
         if 'state' in status_changes:
-            state = self.status['state']
-            if self.play_cb is not None:
-                self.play_cb
+            self.emit_state()
 
         if 'elapsed' in status_changes:
-            elapsed = self.status['elapsed']
-            if self.elapsed_cb is not None:
-                self.elapsed_cb(elapsed)
+            self.emit_elapsed()
 
         if 'volume' in status_changes:
-            volume = self.status['volume']
-            if self.volume_cb is not None:
-                self.volume_cb(volume)
+            self.emit_volume()
 
         if any (e in ['repeat', 'random'] for e in status_changes):
-            repeat = self.status['repeat']
-            random = self.status['random']
-            if self.repeat_random_cb is not None:
-                self.repeat_random_cb(repeat, random)
+            self.emit_random_repeat()
 
         if 'single' in status_changes:
-            single = self.status['single']
-            if self.single_cb is not None:
-                self.single_cb(single)
+            self.emit_single()
 
 
-def song_cb(song):
-    print("song changed to %s" % str(song))
+class MqttHandler():
+    def __init__(self, mqtt, topic_base, mpd):
+        self.mqtt = mqtt
+        self.topic_base = topic_base
 
-def play_cb(state):
-    print("player state changed to %s" % state)
-
-def elapsed_cb(elapsed):
-    print("elapsed changed to %s" % elapsed)
-
-def volume_cb(volume):
-    print("volume changed to %s" % volume)
-
-def repeat_random_cb(repeat, random):
-    print("play mode changed to repeat=%s, random=%s" % (repeat, random))
-
-def single_cb(single):
-    print("single play mode changed to %s" % single)
+        self.mpd = mpd
+        self.mpd.set_callback(song_cb = self.song_cb,
+                              play_cb = self.play_cb,
+                              elapsed_cb = self.elapsed_cb,
+                              volume_cb = self.volume_cb,
+                              repeat_random_cb = self.repeat_random_cb,
+                              single_cb = self.single_cb)
 
 
+    def song_cb(self, song):
+        for key, value in song.items():
+            self.mqtt.publish(self._render_topic("song/"+key), value, qos=2)
+
+
+    def play_cb(self, state):
+        self.mqtt.publish(self._render_topic("player/state"), state, qos=2)
+
+
+    def elapsed_cb(self, elapsed):
+        self.mqtt.publish(self._render_topic("player/elapsed"), elapsed, qos=2)
+
+
+    def volume_cb(self, volume):
+        self.mqtt.publish(self._render_topic("player/volume"), volume, qos=2)
+
+
+    def repeat_random_cb(self, repeat, random):
+        self.mqtt.publish(self._render_topic("player/repeat"), repeat, qos=2)
+        self.mqtt.publish(self._render_topic("player/random"), random, qos=2)
+
+
+    def single_cb(self, single):
+        self.mqtt.publish(self._render_topic("player/single"), single, qos=2)
+
+
+    def _render_topic(self, rel):
+        delim = "" if self.topic_base.endswith("/") or rel.startswith("/") else "/"
+        return "{base}{delim}{rel}".format(base=self.topic_base, delim=delim, rel=rel)
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, sigint_handler)
@@ -185,13 +245,9 @@ if __name__ == "__main__":
         port=args.mpdport,
         version=client.mpd_version))
 
-    handler = MpdHandler(client,
-                         song_cb = song_cb,
-                         play_cb = play_cb,
-                         elapsed_cb = elapsed_cb,
-                         volume_cb = volume_cb,
-                         repeat_random_cb = repeat_random_cb,
-                         single_cb = single_cb)
+    handler = MpdHandler(client);
+    mqtt_handler = MqttHandler(mqttclient, args.topic, handler)
+
     handler.watch()
 
     mqttclient.loop_stop()
