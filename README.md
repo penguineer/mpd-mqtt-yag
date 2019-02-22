@@ -25,11 +25,11 @@ All topics are relative to the configured topic base.
 
 ### Command topics:
 
-* `player/CMD` – Send a command, where command is one of
+* `CMD` – Send a command, where command is one of
   * `query` – Re-publish information topics
   * `play` – Start playback (Resets single-play to 0)
   * `pause` – Pause playback
   * `stop` – Stop playback (immediately)
   * `stop after` – Stop playback after current song (Sets single-play to 1)
   * `next` – Select next song
-* `player/CMD/volume` – Set volume (0 to 100)
+* `CMD/volume` – Set volume (0 to 100)
