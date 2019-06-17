@@ -91,6 +91,12 @@ class MpdClientPool:
                 client.ping()
 
             except mpd.base.ConnectionError as e:
+                print("Client connection error: {} {}".format(e.__class__.__name__, str(e)))
+                try:
+                    client.disconnect()
+                except mpd.base.ConnectionError as e:
+                    print("Error during disconnect: {} {}".format(e.__class__.__name__, str(e)))
+
                 client = None
 
                 if tries == 0:
