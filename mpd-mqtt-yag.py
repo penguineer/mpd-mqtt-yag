@@ -373,6 +373,8 @@ if __name__ == "__main__":
         host=args.mpdhost,
         port=args.mpdport,
         version=mpd_ver.mpd_version))
+    # disable playlist consumation
+    mpd_ver.consume(0)
     mpd_pool.drop(mpd_ver)
 
     handler = MpdHandler(mpd_pool,
