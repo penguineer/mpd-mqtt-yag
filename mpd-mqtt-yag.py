@@ -112,7 +112,7 @@ class MpdClientPool:
 
 
 class MpdHandler:
-    def __init__(self, mpd_pool):
+    def __init__(self, mpd_pool, fav_tag=None, fav_needle=None):
         self.mpd_pool = mpd_pool
         self.song_cb = None
         self.play_cb = None
@@ -120,6 +120,9 @@ class MpdHandler:
         self.volume_cb = None
         self.repeat_random_cb = None
         self.single_cb = None
+
+        self.fav_tag = fav_tag
+        self.fav_needle = fav_needle
 
         self.status = ObservedDict()
         self.song = ObservedDict()
@@ -173,6 +176,17 @@ class MpdHandler:
             self.mpd_pool.drop(mpd)
         except ValueError as e:
             print(e)
+
+    def cmd_fav(self):
+        if (self.fav_tag is None) or (self.fav_needle is None):
+            return
+
+        mpd = self.mpd_pool.acquire()
+        res = mpd.playlistfind(self.fav_tag, self.fav_needle)
+        if res and ('id' in res):
+            id = res['id']
+            mpd.playid(id)
+        self.mpd_pool.drop(mpd)
 
     def emit_song(self):
         if self.song_cb is None:
@@ -342,6 +356,8 @@ if __name__ == "__main__":
     parser.add_argument("--mqtthost", help="MQTT host", default="localhost")
     parser.add_argument("--mqttport", help="MQTT port", default=1883)
     parser.add_argument("--topic", help="MQTT topic prefix", default="MPD")
+    parser.add_argument("--favtag", help="Favourite song tag", default="title")
+    parser.add_argument("--favneedle", help="Favourite song query", default=None)
     args = parser.parse_args()
 
     mqttclient = mqtt.Client()
@@ -358,7 +374,9 @@ if __name__ == "__main__":
         version=mpd_ver.mpd_version))
     mpd_pool.drop(mpd_ver)
 
-    handler = MpdHandler(mpd_pool)
+    handler = MpdHandler(mpd_pool,
+                         fav_tag=args.favtag,
+                         fav_needle=args.favneedle)
 
     mqtt_handler = MqttHandler(mqttclient, args.topic, handler)
 
