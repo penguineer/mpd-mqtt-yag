@@ -183,9 +183,9 @@ class MpdHandler:
 
         mpd = self.mpd_pool.acquire()
         res = mpd.playlistfind(self.fav_tag, self.fav_needle)
-        if res and ('id' in res):
-            id = res['id']
-            mpd.playid(id)
+        if res and ('id' in res[0]):
+            song_id = res[0]['id']
+            mpd.playid(song_id)
         self.mpd_pool.drop(mpd)
 
     def emit_song(self):
@@ -325,7 +325,8 @@ class MqttHandler():
             'pause': self.mpd.cmd_pause,
             'stop': self.mpd.cmd_stop,
             'stop after': self.mpd.cmd_stop_after,
-            'next': self.mpd.cmd_next
+            'next': self.mpd.cmd_next,
+            'fav': self.mpd.cmd_fav
             }
 
         if cmd in commands:
