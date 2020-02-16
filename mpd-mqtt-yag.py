@@ -12,6 +12,8 @@ from mpd import MPDClient
 
 import paho.mqtt.client as mqtt
 
+from collections import deque
+
 
 MQTT_TOPICS = {}
 
@@ -61,7 +63,7 @@ class MpdClientPool:
         self.port = port
         self.password = password
 
-        self.clients = []
+        self.clients = deque()
 
     def _create_client(self):
         client = MPDClient()
@@ -83,8 +85,7 @@ class MpdClientPool:
         while not client and tries:
             try:
                 if self.clients:
-                    client = self.clients[0]
-                    self.clients = self.clients[1:]
+                    client = self.clients.pop()
                 else:
                     client = self._create_client()
 
