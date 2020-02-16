@@ -102,11 +102,11 @@ class MpdClientPool:
 
                 client = None
 
-                if tries == 0:
-                    raise
-                tries = tries - 1
-
-                time.sleep(timeout)
+                if not self.clients:
+                    if tries == 0:
+                        raise
+                    tries = tries - 1
+                    time.sleep(timeout)
 
         print("Acquired an MPD client, queue size is {}".format(len(self.clients)))
 
