@@ -1,3 +1,2 @@
 python-mpd2
 paho-mqtt
-python-mpd
