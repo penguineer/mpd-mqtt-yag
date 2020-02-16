@@ -93,7 +93,7 @@ class MpdClientPool:
 
                 client.ping()
 
-            except mpd.ConnectionError as e:
+            except Exception as e:
                 print("Client connection error: {} {}".format(e.__class__.__name__, str(e)))
                 try:
                     client.disconnect()
