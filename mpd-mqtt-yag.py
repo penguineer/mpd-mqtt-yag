@@ -237,7 +237,10 @@ class MpdHandler:
             self._check_updates(subsystems)
 
             mpd_client = self.mpd_pool.acquire()
-            subsystems = mpd_client.idle()
+            try:
+                subsystems = mpd_client.idle()
+            except Exception as e:
+                print("Exception {} during MPD idle: {}".format(e.__class__.__name__, str(e)))
             self.mpd_pool.drop(mpd_client)
 
     def _check_updates(self, subsystems=None):
