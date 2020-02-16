@@ -85,8 +85,10 @@ class MpdClientPool:
         while not client and tries:
             try:
                 if self.clients:
+                    print("Create a new MPD client.")
                     client = self.clients.pop()
                 else:
+                    print("Reuse an MPD client.")
                     client = self._create_client()
 
                 client.ping()
@@ -106,10 +108,14 @@ class MpdClientPool:
 
                 time.sleep(timeout)
 
+        print("Acquired an MPD client, queue size is {}".format(len(self.clients)))
+
         return client
 
     def drop(self, client):
         self.clients.append(client)
+
+        print("Returned an MPD client, queue size is {}".format(len(self.clients)))
 
 
 class MpdHandler:
