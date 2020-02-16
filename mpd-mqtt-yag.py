@@ -16,21 +16,21 @@ import paho.mqtt.client as mqtt
 MQTT_TOPICS = {}
 
 
-def mqtt_add_topic_callback(mqtt, topic, cb):
+def mqtt_add_topic_callback(mqtt_client, topic, cb):
     MQTT_TOPICS[topic] = cb
 
-    mqtt.subscribe(topic)
-    mqtt.message_callback_add(topic, cb)
+    mqtt_client.subscribe(topic)
+    mqtt_client.message_callback_add(topic, cb)
 
 
-def on_mqtt_connect(client, userdata, flags, rc):
+def on_mqtt_connect(client, _userdata, _flags, rc):
     print("MQTT connected with code %s" % rc)
     for topic, cb in MQTT_TOPICS.items():
         client.subscribe(topic)
         client.message_callback_add(topic, cb)
 
 
-def sigint_handler(signal, frame):
+def sigint_handler(_signal, _frame):
     print("SIGINT received. Exit.")
     sys.exit(0)
 
@@ -142,38 +142,38 @@ class MpdHandler:
         self.single_cb = single_cb
 
     def cmd_play(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.single(0)
-        mpd.play()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        mpd_client.single(0)
+        mpd_client.play()
+        self.mpd_pool.drop(mpd_client)
 
     def cmd_pause(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.pause()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        mpd_client.pause()
+        self.mpd_pool.drop(mpd_client)
 
     def cmd_stop(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.stop()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        mpd_client.stop()
+        self.mpd_pool.drop(mpd_client)
 
     def cmd_stop_after(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.single(1)
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        mpd_client.single(1)
+        self.mpd_pool.drop(mpd_client)
 
     def cmd_next(self):
-        mpd = self.mpd_pool.acquire()
-        mpd.next()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        mpd_client.next()
+        self.mpd_pool.drop(mpd_client)
 
     def cmd_volume(self, volume):
         try:
             vol = int(volume)
 
-            mpd = self.mpd_pool.acquire()
-            mpd.setvol(vol)
-            self.mpd_pool.drop(mpd)
+            mpd_client = self.mpd_pool.acquire()
+            mpd_client.setvol(vol)
+            self.mpd_pool.drop(mpd_client)
         except ValueError as e:
             print(e)
 
@@ -181,12 +181,12 @@ class MpdHandler:
         if (self.fav_tag is None) or (self.fav_needle is None):
             return
 
-        mpd = self.mpd_pool.acquire()
-        res = mpd.playlistfind(self.fav_tag, self.fav_needle)
+        mpd_client = self.mpd_pool.acquire()
+        res = mpd_client.playlistfind(self.fav_tag, self.fav_needle)
         if res and ('id' in res[0]):
             song_id = res[0]['id']
-            mpd.playid(song_id)
-        self.mpd_pool.drop(mpd)
+            mpd_client.playid(song_id)
+        self.mpd_pool.drop(mpd_client)
 
     def emit_song(self):
         if self.song_cb is None:
@@ -229,9 +229,9 @@ class MpdHandler:
         while True:
             self._check_updates(subsystems)
 
-            mpd = self.mpd_pool.acquire()
-            subsystems = mpd.idle()
-            self.mpd_pool.drop(mpd)
+            mpd_client = self.mpd_pool.acquire()
+            subsystems = mpd_client.idle()
+            self.mpd_pool.drop(mpd_client)
 
     def _check_updates(self, subsystems=None):
         self._update_status()
@@ -243,21 +243,21 @@ class MpdHandler:
             self._dispatch_change_events(subsystems, status_changes, song_changes)
 
     def _update_status(self):
-        mpd = self.mpd_pool.acquire()
-        st_py = mpd.status()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        st_py = mpd_client.status()
+        self.mpd_pool.drop(mpd_client)
         for name, val in st_py.items():
             self.status[name] = val
 
     def _update_song(self):
-        mpd = self.mpd_pool.acquire()
-        song_py = mpd.currentsong()
-        self.mpd_pool.drop(mpd)
+        mpd_client = self.mpd_pool.acquire()
+        song_py = mpd_client.currentsong()
+        self.mpd_pool.drop(mpd_client)
         for name, val in song_py.items():
             self.song[name] = val
 
-    def _dispatch_change_events(self, subsystems, status_changes, song_changes):
-        if any (e in ['artist', 'title', 'album'] for e in song_changes):
+    def _dispatch_change_events(self, _subsystems, status_changes, song_changes):
+        if any(e in ['artist', 'title', 'album'] for e in song_changes):
             self.emit_song()
 
         if 'state' in status_changes:
@@ -269,19 +269,19 @@ class MpdHandler:
         if 'volume' in status_changes:
             self.emit_volume()
 
-        if any (e in ['repeat', 'random'] for e in status_changes):
+        if any(e in ['repeat', 'random'] for e in status_changes):
             self.emit_random_repeat()
 
         if 'single' in status_changes:
             self.emit_single()
 
 
-class MqttHandler():
-    def __init__(self, mqtt, topic_base, mpd):
-        self.mqtt = mqtt
+class MqttHandler:
+    def __init__(self, mqtt_client, topic_base, mpd_client):
+        self.mqtt_client = mqtt_client
         self.topic_base = topic_base
 
-        self.mpd = mpd
+        self.mpd = mpd_client
         self.mpd.set_callback(song_cb=self.song_cb,
                               play_cb=self.play_cb,
                               elapsed_cb=self.elapsed_cb,
@@ -289,34 +289,34 @@ class MqttHandler():
                               repeat_random_cb=self.repeat_random_cb,
                               single_cb=self.single_cb)
 
-        mqtt_add_topic_callback(mqtt, self._render_topic("CMD"), self._dispatch_command_mqtt_cb)
-        mqtt_add_topic_callback(mqtt, self._render_topic("CMD/volume"), self._volume_mqtt_cb)
+        mqtt_add_topic_callback(mqtt_client, self._render_topic("CMD"), self._dispatch_command_mqtt_cb)
+        mqtt_add_topic_callback(mqtt_client, self._render_topic("CMD/volume"), self._volume_mqtt_cb)
 
     def song_cb(self, song):
         for key, value in song.items():
-            self.mqtt.publish(self._render_topic("song/"+key), value, qos=2)
+            self.mqtt_client.publish(self._render_topic("song/" + key), value, qos=2)
 
     def play_cb(self, state):
-        self.mqtt.publish(self._render_topic("player/state"), state, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/state"), state, qos=2)
 
     def elapsed_cb(self, elapsed):
-        self.mqtt.publish(self._render_topic("player/elapsed"), elapsed, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/elapsed"), elapsed, qos=2)
 
     def volume_cb(self, volume):
-        self.mqtt.publish(self._render_topic("player/volume"), volume, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/volume"), volume, qos=2)
 
     def repeat_random_cb(self, repeat, random):
-        self.mqtt.publish(self._render_topic("player/repeat"), repeat, qos=2)
-        self.mqtt.publish(self._render_topic("player/random"), random, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/repeat"), repeat, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/random"), random, qos=2)
 
     def single_cb(self, single):
-        self.mqtt.publish(self._render_topic("player/single"), single, qos=2)
+        self.mqtt_client.publish(self._render_topic("player/single"), single, qos=2)
 
     def _render_topic(self, rel):
         delim = "" if self.topic_base.endswith("/") or rel.startswith("/") else "/"
         return "{base}{delim}{rel}".format(base=self.topic_base, delim=delim, rel=rel)
 
-    def _dispatch_command_mqtt_cb(self, client, userdata, message):
+    def _dispatch_command_mqtt_cb(self, _client, _userdata, message):
         cmd = message.payload.decode("utf-8")
 
         commands = {
@@ -332,7 +332,7 @@ class MqttHandler():
         if cmd in commands:
             commands[cmd]()
 
-    def _volume_mqtt_cb(self, client, userdata, message):
+    def _volume_mqtt_cb(self, _client, _userdata, message):
         volume = message.payload.decode("utf-8")
 
         self.mpd.cmd_volume(volume)
@@ -347,7 +347,7 @@ class MqttHandler():
             self.mpd.emit_single()
 
 
-if __name__ == "__main__":
+def main():
     signal.signal(signal.SIGINT, sigint_handler)
 
     parser = argparse.ArgumentParser(
@@ -373,7 +373,8 @@ if __name__ == "__main__":
         host=args.mpdhost,
         port=args.mpdport,
         version=mpd_ver.mpd_version))
-    # disable playlist consumation
+
+    # disable playlist consumption
     mpd_ver.consume(0)
     mpd_pool.drop(mpd_ver)
 
@@ -381,8 +382,12 @@ if __name__ == "__main__":
                          fav_tag=args.favtag,
                          fav_needle=args.favneedle)
 
-    mqtt_handler = MqttHandler(mqttclient, args.topic, handler)
+    MqttHandler(mqttclient, args.topic, handler)
 
     handler.watch()
 
     mqttclient.loop_stop()
+
+
+if __name__ == "__main__":
+    main()
