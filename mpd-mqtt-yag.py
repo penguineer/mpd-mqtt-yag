@@ -12,6 +12,8 @@ from mpd import MPDClient
 
 import paho.mqtt.client as mqtt
 
+from collections import deque
+
 
 MQTT_TOPICS = {}
 
@@ -61,12 +63,12 @@ class MpdClientPool:
         self.port = port
         self.password = password
 
-        self.clients = []
+        self.clients = deque()
 
     def _create_client(self):
         client = MPDClient()
         client.timeout = 10
-        client.idletimeout = None
+        client.idletimeout = 10
         if self.password:
             client.password(self.password)
 
@@ -83,32 +85,37 @@ class MpdClientPool:
         while not client and tries:
             try:
                 if self.clients:
-                    client = self.clients[0]
-                    self.clients = self.clients[1:]
+                    print("Create a new MPD client.")
+                    client = self.clients.pop()
                 else:
+                    print("Reuse an MPD client.")
                     client = self._create_client()
 
                 client.ping()
 
-            except mpd.base.ConnectionError as e:
+            except Exception as e:
                 print("Client connection error: {} {}".format(e.__class__.__name__, str(e)))
                 try:
                     client.disconnect()
-                except mpd.base.ConnectionError as e:
+                except mpd.ConnectionError as e:
                     print("Error during disconnect: {} {}".format(e.__class__.__name__, str(e)))
 
                 client = None
 
-                if tries == 0:
-                    raise
-                tries = tries - 1
+                if not self.clients:
+                    if tries == 0:
+                        raise
+                    tries = tries - 1
+                    time.sleep(timeout)
 
-                time.sleep(timeout)
+        print("Acquired an MPD client, queue size is {}".format(len(self.clients)))
 
         return client
 
     def drop(self, client):
         self.clients.append(client)
+
+        print("Returned an MPD client, queue size is {}".format(len(self.clients)))
 
 
 class MpdHandler:
@@ -230,7 +237,10 @@ class MpdHandler:
             self._check_updates(subsystems)
 
             mpd_client = self.mpd_pool.acquire()
-            subsystems = mpd_client.idle()
+            try:
+                subsystems = mpd_client.idle()
+            except Exception as e:
+                print("Exception {} during MPD idle: {}".format(e.__class__.__name__, str(e)))
             self.mpd_pool.drop(mpd_client)
 
     def _check_updates(self, subsystems=None):
