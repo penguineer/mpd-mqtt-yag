@@ -68,7 +68,7 @@ class MpdClientPool:
     def _create_client(self):
         client = MPDClient()
         client.timeout = 10
-        client.idletimeout = 10
+        client.idletimeout = None
         if self.password:
             client.password(self.password)
 
